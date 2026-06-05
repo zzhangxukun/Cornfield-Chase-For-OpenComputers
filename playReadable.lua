@@ -134,18 +134,28 @@ local function estimateFrequency(samples, sampleRate)
     end
     prev = curr
   end
-  local duration = #samples / sampleRate
-  if duration <= 0 then
+  if zeroCrossings == 0 then
     return nil
   end
-  return zeroCrossings / (2 * duration)
+  local duration = #samples / sampleRate
+  if duration <= 0 or duration == math.huge or duration ~= duration then
+    return nil
+  end
+  local freq = zeroCrossings / (2 * duration)
+  if freq <= 0 or freq == math.huge or freq ~= freq then
+    return nil
+  end
+  return freq
 end
 
 local function normalizeFrequency(freq)
-  if not freq or freq <= 0 then
+  if not freq or type(freq) ~= "number" then
     return nil
   end
-  if freq < 20 or freq > 2000 then
+  if freq ~= freq or freq == math.huge or freq == -math.huge then
+    return nil
+  end
+  if freq <= 0 or freq < 20 or freq > 2000 then
     return nil
   end
   return freq
@@ -158,16 +168,21 @@ local function processSegment(segment, fmt, threshold, currentNote, currentDurat
     sum = sum + v * v
   end
   local rms = math.sqrt(sum / #segment)
-  local noteFrequency
+  local noteFrequency = nil
   if rms >= threshold then
-    noteFrequency = normalizeFrequency(estimateFrequency(segment, fmt.sampleRate))
+    local freq = estimateFrequency(segment, fmt.sampleRate)
+    if freq and freq > 0 then
+      noteFrequency = normalizeFrequency(freq)
+    end
   end
   local duration = #segment / fmt.sampleRate
   if noteFrequency == currentNote then
     currentDuration = currentDuration + duration
   else
-    if currentDuration > 0 then
+    if currentDuration > 0 and currentNote then
       notes[#notes + 1] = {note = currentNote, duration = currentDuration}
+    elseif currentDuration > 0 then
+      notes[#notes + 1] = {note = nil, duration = currentDuration}
     end
     currentNote = noteFrequency
     currentDuration = duration
@@ -210,7 +225,11 @@ local function buildNoteTableFromData(data, fmt)
     currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
   end
   if currentDuration > 0 then
-    notes[#notes + 1] = {note = currentNote, duration = currentDuration}
+    if currentNote then
+      notes[#notes + 1] = {note = currentNote, duration = currentDuration}
+    else
+      notes[#notes + 1] = {note = nil, duration = currentDuration}
+    end
   end
   return notes
 end
@@ -313,7 +332,11 @@ local function buildNoteTableFromHandle(handle, fmt, dataSize)
     currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
   end
   if currentDuration > 0 then
-    notes[#notes + 1] = {note = currentNote, duration = currentDuration}
+    if currentNote then
+      notes[#notes + 1] = {note = currentNote, duration = currentDuration}
+    else
+      notes[#notes + 1] = {note = nil, duration = currentDuration}
+    end
   end
   return notes
 end
@@ -338,8 +361,12 @@ end
 
 local function playTrack(notes)
   for _, entry in ipairs(notes) do
-    if entry.note and entry.note >= 20 and entry.note <= 2000 then
-      note.play(entry.note, entry.duration)
+    if entry.note then
+      if type(entry.note) == "number" and entry.note >= 20 and entry.note <= 2000 then
+        note.play(entry.note, entry.duration)
+      else
+        os.sleep(entry.duration)
+      end
     else
       os.sleep(entry.duration)
     end
