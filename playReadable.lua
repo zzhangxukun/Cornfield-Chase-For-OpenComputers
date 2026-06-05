@@ -162,7 +162,7 @@ local function freqToNoteCode(freq)
 end
 
 
-local function processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+local function processSegment(segment, fmt, threshold, currentNote, currentDuration, notes, segmentDuration)
   local sum = 0
   for _, v in ipairs(segment) do
     sum = sum + v * v
@@ -175,7 +175,7 @@ local function processSegment(segment, fmt, threshold, currentNote, currentDurat
       noteCode = freqToNoteCode(freq)
     end
   end
-  local duration = #segment / fmt.sampleRate
+  local duration = segmentDuration or (#segment / fmt.sampleRate)
   if noteCode == currentNote then
     currentDuration = currentDuration + duration
   else
@@ -193,7 +193,9 @@ end
 local function buildNoteTableFromData(data, fmt)
   local bytesPerSample = fmt.bitsPerSample / 8
   local frameSize = bytesPerSample * fmt.channels
-  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.08))
+  -- 将采样片段时长调整为0.1秒（根据API最小持续时间约束）
+  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.1))
+  local segmentDuration = segmentSamples / fmt.sampleRate
   local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.05
   local notes = {}
   local currentNote, currentDuration = nil, 0
@@ -216,13 +218,13 @@ local function buildNoteTableFromData(data, fmt)
     local sample = sum / fmt.channels
     segment[#segment + 1] = sample
     if #segment >= segmentSamples then
-      currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+      currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes, segmentDuration)
       segment = {}
     end
   end
 
   if #segment > 0 then
-    currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+    currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes, #segment / fmt.sampleRate)
   end
   if currentDuration > 0 then
     if currentNote then
@@ -285,7 +287,9 @@ end
 local function buildNoteTableFromHandle(handle, fmt, dataSize)
   local bytesPerSample = fmt.bitsPerSample / 8
   local frameSize = bytesPerSample * fmt.channels
-  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.08))
+  -- 将采样片段时长调整为0.1秒（根据API最小持续时间约束）
+  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.1))
+  local segmentDuration = segmentSamples / fmt.sampleRate
   local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.05
   local notes = {}
   local currentNote, currentDuration = nil, 0
@@ -322,14 +326,14 @@ local function buildNoteTableFromHandle(handle, fmt, dataSize)
       local sample = sum / fmt.channels
       segment[#segment + 1] = sample
       if #segment >= segmentSamples then
-        currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+        currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes, segmentDuration)
         segment = {}
       end
     end
   end
 
   if #segment > 0 then
-    currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+    currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes, #segment / fmt.sampleRate)
   end
   if currentDuration > 0 then
     if currentNote then
@@ -365,13 +369,24 @@ local function playTrack(notes)
     if type(dur) ~= "number" or dur ~= dur or dur < 0 then
       dur = 0
     end
+    
+    -- 仅当 dur 是因为过小而被强行撑大时（比如读取旧表），才进行 0.1 兜底，
+    -- 对于新生成的表，它们本身由 0.1 积攒而来，直接保留原始真实累加时间
+    if dur > 0 and dur < 0.1 then
+      dur = 0.1
+    end
 
     if entry.note and type(entry.note) == "number" then
       local noteCode = math.floor(entry.note + 0.5)
       if noteCode >= 20 and noteCode <= 2000 then
+        local startTick = computer.uptime and computer.uptime() or os.clock()
         local ok = pcall(note.play, noteCode, dur)
-        if not ok and dur > 0 then
-          os.sleep(dur)
+        local elapsed = (computer.uptime and computer.uptime() or os.clock()) - startTick
+        
+        -- 修正休止补偿计算，不应重复休止。若 pcall 耗时较短，仅补偿不足部分。
+        local remaining = dur - elapsed
+        if remaining > 0 then
+          os.sleep(remaining)
         end
       elseif dur > 0 then
         os.sleep(dur)
