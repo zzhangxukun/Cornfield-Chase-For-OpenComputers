@@ -151,6 +151,7 @@ local function normalizeFrequency(freq)
   return freq
 end
 
+
 local function processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
   local sum = 0
   for _, v in ipairs(segment) do
@@ -172,6 +173,94 @@ local function processSegment(segment, fmt, threshold, currentNote, currentDurat
     currentDuration = duration
   end
   return currentNote, currentDuration
+end
+
+local function buildNoteTableFromData(data, fmt)
+  local bytesPerSample = fmt.bitsPerSample / 8
+  local frameSize = bytesPerSample * fmt.channels
+  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.08))
+  local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.02
+  local notes = {}
+  local currentNote, currentDuration = nil, 0
+  local segment = {}
+  
+  local fullFrames = math.floor(#data / frameSize)
+  for i = 0, fullFrames - 1 do
+    local frameStart = i * frameSize + 1
+    local sum = 0
+    for ch = 1, fmt.channels do
+      local samplePos = frameStart + (ch - 1) * bytesPerSample
+      local sample
+      if bytesPerSample == 1 then
+        sample = string.byte(data, samplePos) - 128
+      else
+        sample = sintLE(data, samplePos, bytesPerSample)
+      end
+      sum = sum + sample
+    end
+    local sample = sum / fmt.channels
+    segment[#segment + 1] = sample
+    if #segment >= segmentSamples then
+      currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+      segment = {}
+    end
+  end
+
+  if #segment > 0 then
+    currentNote, currentDuration = processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
+  end
+  if currentDuration > 0 then
+    notes[#notes + 1] = {note = currentNote, duration = currentDuration}
+  end
+  return notes
+end
+
+local function parseWavData(data)
+  if #data < 44 then
+    return nil, "数据过小，无法识别为 WAV。"
+  end
+  if data:sub(1, 4) ~= "RIFF" or data:sub(9, 12) ~= "WAVE" then
+    return nil, "不是有效的 WAV 文件。"
+  end
+
+  local pos = 13
+  local fmt
+  local dataChunk
+  while pos <= #data - 8 do
+    local chunkId = data:sub(pos, pos + 3)
+    local chunkSize = uintLE(data, pos + 4, 4)
+    local chunkStart = pos + 8
+    if chunkId == "fmt " then
+      local audioFormat = uintLE(data, chunkStart, 2)
+      local channels = uintLE(data, chunkStart + 2, 2)
+      local sampleRate = uintLE(data, chunkStart + 4, 4)
+      local bitsPerSample = uintLE(data, chunkStart + 14, 2)
+      fmt = {
+        audioFormat = audioFormat,
+        channels = channels,
+        sampleRate = sampleRate,
+        bitsPerSample = bitsPerSample,
+      }
+    elseif chunkId == "data" then
+      dataChunk = {
+        offset = chunkStart,
+        size = chunkSize,
+      }
+      break
+    end
+    pos = chunkStart + chunkSize + (chunkSize % 2)
+  end
+
+  if not fmt then
+    return nil, "找不到 fmt Chunk。"
+  end
+  if not dataChunk then
+    return nil, "找不到 data Chunk。"
+  end
+  if fmt.audioFormat ~= 1 then
+    return nil, "仅支持 PCM 编码的 WAV 文件。"
+  end
+  return fmt, data:sub(dataChunk.offset, dataChunk.offset + dataChunk.size - 1)
 end
 
 local function buildNoteTableFromHandle(handle, fmt, dataSize)
@@ -249,11 +338,19 @@ end
 
 local function playTrack(notes)
   for _, entry in ipairs(notes) do
-    if entry.note then
+    if entry.note and entry.note >= 20 and entry.note <= 2000 then
       note.play(entry.note, entry.duration)
+    else
+      os.sleep(entry.duration)
     end
-    os.sleep(entry.duration)
   end
+end
+
+local function extractFilename(path)
+  local filename = path:match("([^\\/]+)$") or path
+  filename = filename:gsub("%.lua$", "")
+  filename = filename:gsub("%.[^.]*$", "")
+  return filename
 end
 
 local function loadTrackFromLua(path)
@@ -291,17 +388,15 @@ local function main()
       return
     end
 
-    local fmt, wavData = parseWav(data)
+    local fmt, wavData = parseWavData(data)
     if not fmt then
       print("解析 WAV 失败: " .. tostring(wavData))
       return
     end
     print(string.format("WAV 格式: %d Hz, %d 位, %d 通道", fmt.sampleRate, fmt.bitsPerSample, fmt.channels))
 
-    print("正在解码采样数据...")
-    local samples = decodeSamples(wavData, fmt)
     print("正在生成音符表...")
-    notes = buildNoteTable(samples, fmt)
+    notes = buildNoteTableFromData(wavData, fmt)
   elseif source:sub(-4):lower() == ".lua" then
     local track, err = loadTrackFromLua(source)
     if not track then
@@ -335,7 +430,8 @@ local function main()
     return
   end
 
-  local outputFile = "converted_track.lua"
+  local baseName = extractFilename(source)
+  local outputFile = "/home/" .. baseName .. ".lua"
   local ok, saveErr = saveTrack(notes, outputFile)
   if not ok then
     print("保存 Lua 表失败: " .. tostring(saveErr))
