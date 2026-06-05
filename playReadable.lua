@@ -257,8 +257,8 @@ local function playTrack(notes)
 end
 
 local function main()
-  print("== 音频转 Lua 表工具 (OpenComputers) ==")
-  io.write("请输入本地WAV文件路径或网络URL: ")
+  print("== OC 音乐 ==")
+  io.write("请输入本地WAV文件绝对路径或网络URL: ")
   local source = io.read()
   if not source or source == "" then
     print("未输入音频源，已退出。")
