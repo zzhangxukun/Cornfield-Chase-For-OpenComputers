@@ -141,19 +141,14 @@ local function estimateFrequency(samples, sampleRate)
   return zeroCrossings / (2 * duration)
 end
 
-local function freqToNoteNumber(freq)
+local function normalizeFrequency(freq)
   if not freq or freq <= 0 then
     return nil
   end
-  local baseFreq = 220
-  local semitone = 12 * math.log(freq / baseFreq) / math.log(2) + 13
-  local noteNumber = math.floor(semitone + 0.5)
-  if noteNumber < 1 then
-    noteNumber = 1
-  elseif noteNumber > 25 then
-    noteNumber = 25
+  if freq < 20 or freq > 2000 then
+    return nil
   end
-  return noteNumber
+  return freq
 end
 
 local function processSegment(segment, fmt, threshold, currentNote, currentDuration, notes)
@@ -162,18 +157,18 @@ local function processSegment(segment, fmt, threshold, currentNote, currentDurat
     sum = sum + v * v
   end
   local rms = math.sqrt(sum / #segment)
-  local noteNumber
+  local noteFrequency
   if rms >= threshold then
-    noteNumber = freqToNoteNumber(estimateFrequency(segment, fmt.sampleRate))
+    noteFrequency = normalizeFrequency(estimateFrequency(segment, fmt.sampleRate))
   end
   local duration = #segment / fmt.sampleRate
-  if noteNumber == currentNote then
+  if noteFrequency == currentNote then
     currentDuration = currentDuration + duration
   else
     if currentDuration > 0 then
       notes[#notes + 1] = {note = currentNote, duration = currentDuration}
     end
-    currentNote = noteNumber
+    currentNote = noteFrequency
     currentDuration = duration
   end
   return currentNote, currentDuration
