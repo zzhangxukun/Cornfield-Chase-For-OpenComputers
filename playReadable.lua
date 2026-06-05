@@ -237,7 +237,7 @@ local function saveTrack(notes, filename)
   handle:write("local track = {\n")
   for _, entry in ipairs(notes) do
     if entry.note then
-      handle:write(string.format("  { note = %d, duration = %.4f },\n", entry.note, entry.duration))
+      handle:write(string.format("  { note = %.4f, duration = %.4f },\n", entry.note, entry.duration))
     else
       handle:write(string.format("  { note = nil, duration = %.4f },\n", entry.duration))
     end
@@ -256,15 +256,30 @@ local function playTrack(notes)
   end
 end
 
+local function loadTrackFromLua(path)
+  local chunk, err = loadfile(path)
+  if not chunk then
+    return nil, err
+  end
+  local ok, track = pcall(chunk)
+  if not ok then
+    return nil, track
+  end
+  if type(track) ~= "table" then
+    return nil, "Lua 文件未返回有效的音符表。"
+  end
+  return track
+end
+
 local function main()
   print("== OC 音乐 ==")
-  io.write("请输入本地WAV文件绝对路径或网络URL: ")
+  io.write("请输入本地WAV文件绝对路径、本地Lua表文件(.lua)或网络URL: ")
   local source = io.read()
   if not source or source == "" then
     print("未输入音频源，已退出。")
     return
   end
-  io.write("按回车开始转换...")
+  io.write("按回车开始处理...")
   io.read()
 
   print("正在加载音频数据...")
@@ -287,6 +302,14 @@ local function main()
     local samples = decodeSamples(wavData, fmt)
     print("正在生成音符表...")
     notes = buildNoteTable(samples, fmt)
+  elseif source:sub(-4):lower() == ".lua" then
+    local track, err = loadTrackFromLua(source)
+    if not track then
+      print("加载 Lua 表失败: " .. tostring(err))
+      return
+    end
+    print("已加载 Lua 表文件，直接播放。")
+    notes = track
   else
     local handle, err = openLocalFile(source)
     if not handle then
