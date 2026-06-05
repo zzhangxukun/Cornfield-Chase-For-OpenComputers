@@ -157,7 +157,6 @@ local function freqToNoteCode(freq)
     return nil
   end
   local midiCode = math.floor(69 + 12 * (math.log(freq / 440) / math.log(2)) + 0.5)
-  -- API 强制要求 [20, 2000]，超出范围的视为噪音，产生休止符，防止出现极低频的杂音一直延续
   if midiCode < 20 or midiCode > 2000 then return nil end
   return midiCode
 end
