@@ -4,13 +4,20 @@ local component = require("component")
 local os = require("os")
 
 local function readLocalFile(path)
-  local handle, err = filesystem.open(path, "rb")
+  local handle, err = filesystem.open(path, "r")
   if not handle then
     return nil, err
   end
-  local data = handle:read("*a")
+  local chunks = {}
+  while true do
+    local chunk = handle:read(4096)
+    if not chunk or chunk == "" then
+      break
+    end
+    table.insert(chunks, chunk)
+  end
   handle:close()
-  return data
+  return table.concat(chunks)
 end
 
 local function fetchUrl(url)
