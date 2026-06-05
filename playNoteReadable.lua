@@ -1,5 +1,6 @@
 local M = {}
 M.func = function(channelCount, musicScore, BPM)
+    print("playNoteReadable start", channelCount, #musicScore, BPM) -- 开始：显示通道数、乐谱长度、BPM
     local SPB = 60 / BPM
 
     local function normalizeNote(note)
@@ -32,17 +33,22 @@ M.func = function(channelCount, musicScore, BPM)
         return inst, note
     end
 
-    for _, value in ipairs(musicScore) do
+    for idx, value in ipairs(musicScore) do
+        print("Beat:", idx, "value=", value) -- 每拍开始：拍序号和值
         for channel = 1, channelCount do
             local instrument, note = decodeNote(value, channel)
             if instrument and note ~= nil then
+                print("Decoded:", "channel=", channel, "inst=", instrument, "note=", note) -- 解码结果
+                print("Calling playChannel:", instrument, note) -- 即将调用播放函数
                 playChannel(instrument, note)
             end
         end
         if type(SPB) == "number" and SPB > 0 and type(os.sleep) == "function" then
+            print("Sleeping SPB:", SPB) -- 休眠时间（秒/拍）
             os.sleep(SPB)
         end
     end
+    print("playNoteReadable end") -- 结束：播放完成
 end
 
 return M
