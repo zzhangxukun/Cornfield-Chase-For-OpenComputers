@@ -1,6 +1,7 @@
 local note = require("note")
 local filesystem = require("filesystem")
 local component = require("component")
+local computer = require("computer")
 local os = require("os")
 
 local function openLocalFile(path)
@@ -156,8 +157,8 @@ local function freqToNoteCode(freq)
     return nil
   end
   local midiCode = math.floor(69 + 12 * (math.log(freq / 440) / math.log(2)) + 0.5)
-  if midiCode < 20 then return 20 end
-  if midiCode > 2000 then return 2000 end
+  -- API 强制要求 [20, 2000]，超出范围的视为噪音，产生休止符，防止出现极低频的杂音一直延续
+  if midiCode < 20 or midiCode > 2000 then return nil end
   return midiCode
 end
 
@@ -194,7 +195,7 @@ local function buildNoteTableFromData(data, fmt)
   local bytesPerSample = fmt.bitsPerSample / 8
   local frameSize = bytesPerSample * fmt.channels
   local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.08))
-  local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.02
+  local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.05
   local notes = {}
   local currentNote, currentDuration = nil, 0
   local segment = {}
@@ -286,7 +287,7 @@ local function buildNoteTableFromHandle(handle, fmt, dataSize)
   local bytesPerSample = fmt.bitsPerSample / 8
   local frameSize = bytesPerSample * fmt.channels
   local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.08))
-  local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.02
+  local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.05
   local notes = {}
   local currentNote, currentDuration = nil, 0
   local segment = {}
