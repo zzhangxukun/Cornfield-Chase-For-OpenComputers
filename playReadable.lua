@@ -155,10 +155,14 @@ local function normalizeFrequency(freq)
   if freq ~= freq or freq == math.huge or freq == -math.huge then
     return nil
   end
-  if freq <= 0 or freq < 20 or freq > 2000 then
+  if freq < 20 or freq > 2000 then
     return nil
   end
-  return freq
+  local intFreq = math.floor(freq + 0.5)
+  if intFreq < 20 or intFreq > 2000 then
+    return nil
+  end
+  return intFreq
 end
 
 
@@ -361,14 +365,23 @@ end
 
 local function playTrack(notes)
   for _, entry in ipairs(notes) do
-    if entry.note then
-      if type(entry.note) == "number" and entry.note >= 20 and entry.note <= 2000 then
-        note.play(entry.note, entry.duration)
-      else
-        os.sleep(entry.duration)
+    local dur = entry.duration
+    if type(dur) ~= "number" or dur ~= dur or dur < 0 then
+      dur = 0
+    end
+
+    if entry.note and type(entry.note) == "number" then
+      local freq = math.floor(entry.note + 0.5)
+      if freq >= 20 and freq <= 2000 then
+        local ok = pcall(note.play, freq, dur)
+        if not ok and dur > 0 then
+          os.sleep(dur)
+        end
+      elseif dur > 0 then
+        os.sleep(dur)
       end
-    else
-      os.sleep(entry.duration)
+    elseif dur > 0 then
+      os.sleep(dur)
     end
   end
 end
