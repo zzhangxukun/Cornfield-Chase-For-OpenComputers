@@ -1,5 +1,6 @@
 local M={}
 M.func=function(c,m,b)
+print("Start")  -- Start of the function
  local p=type(_G.playNote)=="function" and _G.playNote
  local s=60/b
  print("playNote start", c, #m, b) -- 开始：通道数、乐谱长度、BPM
