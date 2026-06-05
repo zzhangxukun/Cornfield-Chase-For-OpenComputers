@@ -148,21 +148,17 @@ local function estimateFrequency(samples, sampleRate)
   return freq
 end
 
-local function normalizeFrequency(freq)
-  if not freq or type(freq) ~= "number" then
+local function freqToNoteCode(freq)
+  if not freq or type(freq) ~= "number" or freq <= 0 then
     return nil
   end
   if freq ~= freq or freq == math.huge or freq == -math.huge then
     return nil
   end
-  if freq < 20 or freq > 2000 then
-    return nil
-  end
-  local intFreq = math.floor(freq + 0.5)
-  if intFreq < 20 or intFreq > 2000 then
-    return nil
-  end
-  return intFreq
+  local midiCode = math.floor(69 + 12 * (math.log(freq / 440) / math.log(2)) + 0.5)
+  if midiCode < 20 then return 20 end
+  if midiCode > 2000 then return 2000 end
+  return midiCode
 end
 
 
@@ -172,15 +168,15 @@ local function processSegment(segment, fmt, threshold, currentNote, currentDurat
     sum = sum + v * v
   end
   local rms = math.sqrt(sum / #segment)
-  local noteFrequency = nil
+  local noteCode = nil
   if rms >= threshold then
     local freq = estimateFrequency(segment, fmt.sampleRate)
     if freq and freq > 0 then
-      noteFrequency = normalizeFrequency(freq)
+      noteCode = freqToNoteCode(freq)
     end
   end
   local duration = #segment / fmt.sampleRate
-  if noteFrequency == currentNote then
+  if noteCode == currentNote then
     currentDuration = currentDuration + duration
   else
     if currentDuration > 0 and currentNote then
@@ -188,7 +184,7 @@ local function processSegment(segment, fmt, threshold, currentNote, currentDurat
     elseif currentDuration > 0 then
       notes[#notes + 1] = {note = nil, duration = currentDuration}
     end
-    currentNote = noteFrequency
+    currentNote = noteCode
     currentDuration = duration
   end
   return currentNote, currentDuration
@@ -353,7 +349,7 @@ local function saveTrack(notes, filename)
   handle:write("local track = {\n")
   for _, entry in ipairs(notes) do
     if entry.note then
-      handle:write(string.format("  { note = %.4f, duration = %.4f },\n", entry.note, entry.duration))
+      handle:write(string.format("  { note = %d, duration = %.4f },\n", entry.note, entry.duration))
     else
       handle:write(string.format("  { note = nil, duration = %.4f },\n", entry.duration))
     end
@@ -371,9 +367,9 @@ local function playTrack(notes)
     end
 
     if entry.note and type(entry.note) == "number" then
-      local freq = math.floor(entry.note + 0.5)
-      if freq >= 20 and freq <= 2000 then
-        local ok = pcall(note.play, freq, dur)
+      local noteCode = math.floor(entry.note + 0.5)
+      if noteCode >= 20 and noteCode <= 2000 then
+        local ok = pcall(note.play, noteCode, dur)
         if not ok and dur > 0 then
           os.sleep(dur)
         end
