@@ -1,4 +1,4 @@
-# 在铁音符盒上播放Cornfield Chase
+# 基于Computronics播放Cornfield Chase
 
 > [!WARNING]
 > 开发中，代码会随时变动
