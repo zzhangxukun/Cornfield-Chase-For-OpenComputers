@@ -123,15 +123,17 @@ local function parseWavHandle(handle)
 end
 
 local function estimateFrequency(samples, sampleRate)
-  if #samples < 2 then
+  if #samples < 5 then
     return nil
   end
   local zeroCrossings = 0
-  local prev = samples[1]
-  for i = 2, #samples do
-    local curr = samples[i]
-    if (prev < 0 and curr >= 0) or (prev > 0 and curr <= 0) then
-      zeroCrossings = zeroCrossings + 1
+  local prev = 0
+  for i = 3, #samples - 2 do
+    local curr = (samples[i-2] + samples[i-1] + samples[i] + samples[i+1] + samples[i+2]) / 5
+    if i > 3 then
+      if (prev < 0 and curr >= 0) or (prev > 0 and curr <= 0) then
+        zeroCrossings = zeroCrossings + 1
+      end
     end
     prev = curr
   end
@@ -193,8 +195,7 @@ end
 local function buildNoteTableFromData(data, fmt)
   local bytesPerSample = fmt.bitsPerSample / 8
   local frameSize = bytesPerSample * fmt.channels
-  -- 将采样片段时长调整为0.1秒（根据API最小持续时间约束）
-  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.1))
+  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.05))
   local segmentDuration = segmentSamples / fmt.sampleRate
   local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.05
   local notes = {}
@@ -287,8 +288,7 @@ end
 local function buildNoteTableFromHandle(handle, fmt, dataSize)
   local bytesPerSample = fmt.bitsPerSample / 8
   local frameSize = bytesPerSample * fmt.channels
-  -- 将采样片段时长调整为0.1秒（根据API最小持续时间约束）
-  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.1))
+  local segmentSamples = math.max(64, math.floor(fmt.sampleRate * 0.05))
   local segmentDuration = segmentSamples / fmt.sampleRate
   local threshold = 2 ^ (fmt.bitsPerSample - 1) * 0.05
   local notes = {}
@@ -369,21 +369,15 @@ local function playTrack(notes)
     if type(dur) ~= "number" or dur ~= dur or dur < 0 then
       dur = 0
     end
-    
-    -- 仅当 dur 是因为过小而被强行撑大时（比如读取旧表），才进行 0.1 兜底，
-    -- 对于新生成的表，它们本身由 0.1 积攒而来，直接保留原始真实累加时间
-    if dur > 0 and dur < 0.1 then
-      dur = 0.1
-    end
 
     if entry.note and type(entry.note) == "number" then
       local noteCode = math.floor(entry.note + 0.5)
       if noteCode >= 20 and noteCode <= 2000 then
         local startTick = computer.uptime and computer.uptime() or os.clock()
-        local ok = pcall(note.play, noteCode, dur)
+        local playDur = math.max(0.1, dur)
+        local ok = pcall(note.play, noteCode, playDur)
         local elapsed = (computer.uptime and computer.uptime() or os.clock()) - startTick
         
-        -- 修正休止补偿计算，不应重复休止。若 pcall 耗时较短，仅补偿不足部分。
         local remaining = dur - elapsed
         if remaining > 0 then
           os.sleep(remaining)
