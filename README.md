@@ -9,6 +9,9 @@
 ## 需求mod
  - [OpenComputers](https://github.com/MightyPirates/OpenComputers)
 
+## 目前的问题
+- 生成器：音频特征不明显，导致听起来略显杂乱
+
 ---
 
 > 人类与AI的混血产物，本人对于Lua这门语言的经验有限 ~~（指仅看过GTNH wiki的OC条目和OC wiki）~~ ，如果哪些地方写的左右脑互博 ~~说明是周伯通干的~~ 请见谅！
